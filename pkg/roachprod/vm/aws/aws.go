@@ -520,6 +520,29 @@ func (p *Provider) Delete(vms vm.List) error {
 
 // Reset is part of vm.Provider. It is a no-op.
 func (p *Provider) Reset(vms vm.List) error {
+	byRegion, err := regionMap(vms)
+	if err != nil {
+		return err
+	}
+	g := errgroup.Group{}
+	for region, list := range byRegion {
+		// Capture loop vars here
+		args := []string{
+			"ec2", "reboot-instances",
+			"--region", region,
+			"--instance-ids",
+		}
+		args = append(args, list.ProviderIDs()...)
+
+		fmt.Printf("Going to reboot: %v\n", args)
+
+		//g.Go(func() error {
+		//	_, err := p.runCommand(args)
+		//	return err
+		//})
+	}
+	//return g.Wait()
+	g.Wait()
 	return nil // unimplemented
 }
 

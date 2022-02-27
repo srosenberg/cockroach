@@ -175,7 +175,7 @@ func runMutationStatement(conn *gosql.DB, smither *sqlsmith.Smither, logStmt fun
 	_ = runWithTimeout(func() error {
 		// Ignore errors. Log successful statements.
 		if _, err := conn.Exec(stmt); err == nil {
-			logStmt(stmt)
+			//logStmt(stmt)
 		}
 		return nil
 	})
@@ -195,6 +195,8 @@ func runTLPQuery(conn *gosql.DB, smither *sqlsmith.Smither, logStmt func(string)
 	}()
 
 	unpartitioned, partitioned, args := smither.GenerateTLP()
+	logStmt(unpartitioned)
+	logStmt(partitioned)
 
 	return runWithTimeout(func() error {
 		rows1, err := conn.Query(unpartitioned)
@@ -231,6 +233,8 @@ func runTLPQuery(conn *gosql.DB, smither *sqlsmith.Smither, logStmt func(string)
 				"expected unpartitioned and partitioned results to be equal\n%s\nsql: %s\n%s\nwith args: %s",
 				diff, unpartitioned, partitioned, args)
 		}
+
+		logStmt(fmt.Sprintf("Resulting rows=%d", len(unpartitionedRows)))
 		return nil
 	})
 }

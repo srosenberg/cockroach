@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/flagstub"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/pflag"
@@ -576,45 +577,47 @@ func (p *Provider) Delete(vms vm.List) error {
 
 // Reset implements the vm.Provider interface.
 func (p *Provider) Reset(vms vm.List) error {
-	// Map from project to map of zone to list of machines in that project/zone.
-	projectZoneMap := make(map[string]map[string][]string)
-	for _, v := range vms {
-		if v.Provider != ProviderName {
-			return errors.Errorf("%s received VM instance from %s", ProviderName, v.Provider)
-		}
-		if projectZoneMap[v.Project] == nil {
-			projectZoneMap[v.Project] = make(map[string][]string)
-		}
+	//// Map from project to map of zone to list of machines in that project/zone.
+	//projectZoneMap := make(map[string]map[string][]string)
+	//for _, v := range vms {
+	//	if v.Provider != ProviderName {
+	//		return errors.Errorf("%s received VM instance from %s", ProviderName, v.Provider)
+	//	}
+	//	if projectZoneMap[v.Project] == nil {
+	//		projectZoneMap[v.Project] = make(map[string][]string)
+	//	}
+	//
+	//	projectZoneMap[v.Project][v.Zone] = append(projectZoneMap[v.Project][v.Zone], v.Name)
+	//}
+	//
+	//var g errgroup.Group
+	//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	//defer cancel()
+	//for project, zoneMap := range projectZoneMap {
+	//	for zone, names := range zoneMap {
+	//		args := []string{
+	//			"compute", "instances", "reset",
+	//		}
+	//
+	//		args = append(args, "--project", project)
+	//		args = append(args, "--zone", zone)
+	//		args = append(args, names...)
+	//
+	//		g.Go(func() error {
+	//			cmd := exec.CommandContext(ctx, "gcloud", args...)
+	//
+	//			output, err := cmd.CombinedOutput()
+	//			if err != nil {
+	//				return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+	//			}
+	//			return nil
+	//		})
+	//	}
+	//}
+	//
+	//return g.Wait()
 
-		projectZoneMap[v.Project][v.Zone] = append(projectZoneMap[v.Project][v.Zone], v.Name)
-	}
-
-	var g errgroup.Group
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	for project, zoneMap := range projectZoneMap {
-		for zone, names := range zoneMap {
-			args := []string{
-				"compute", "instances", "reset",
-			}
-
-			args = append(args, "--project", project)
-			args = append(args, "--zone", zone)
-			args = append(args, names...)
-
-			g.Go(func() error {
-				cmd := exec.CommandContext(ctx, "gcloud", args...)
-
-				output, err := cmd.CombinedOutput()
-				if err != nil {
-					return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
-				}
-				return nil
-			})
-		}
-	}
-
-	return g.Wait()
+	return nil
 }
 
 // Extend TODO(peter): document
@@ -653,8 +656,10 @@ func (p *Provider) FindActiveAccount() (string, error) {
 	}
 
 	if !strings.HasSuffix(accounts[0].Account, config.EmailDomain) {
-		return "", fmt.Errorf("active account %q does not belong to domain %s",
+		log.Infof(context.TODO(), "WARN: active account %q does not belong to domain %s",
 			accounts[0].Account, config.EmailDomain)
+		//return "", fmt.Errorf("active account %q does not belong to domain %s",
+		//	accounts[0].Account, config.EmailDomain)
 	}
 	_ = accounts[0].Status // silence unused warning
 
