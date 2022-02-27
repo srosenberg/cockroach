@@ -220,6 +220,28 @@ func (p *Provider) Create(
 					err = errors.Wrapf(err, "creating VM %s", name)
 					if err == nil {
 						log.Infof(context.Background(), "created VM %s", name)
+					} else {
+						// attempt to clean up the resource group
+						sub, cleanupErr := p.getSubscription(ctx)
+						if cleanupErr != nil {
+							//TODO: propagate
+						}
+						client := resources.NewGroupsClient(*sub.SubscriptionID)
+						if client.Authorizer, cleanupErr = p.getAuthorizer(); cleanupErr != nil {
+							//TODO: propagate
+						}
+						// Next, we make an API call to see if the resource already exists on Azure.
+						future, cleanupErr := client.Delete(ctx, *group.Name)
+						if cleanupErr != nil {
+							//TODO: propagate
+						}
+						cleanupErr = future.WaitForCompletionRef(ctx, client.Client)
+						if cleanupErr != nil {
+							//TODO: propagate
+						} else {
+							log.Infof(context.Background(), "deleted resource group %s", *group.Name)
+							//TODO: must remove it from cache
+						}
 					}
 					return err
 				})
@@ -575,6 +597,7 @@ func (p *Provider) createVM(
 						StorageAccountType: compute.StorageAccountTypesStandardSSDLRS,
 					},
 					DiskSizeGB: to.Int32Ptr(osVolumeSize),
+					DeleteOption: compute.DiskDeleteOptionTypesDelete,
 				},
 			},
 			OsProfile: &compute.OSProfile{
@@ -600,6 +623,7 @@ func (p *Provider) createVM(
 						ID: nic.ID,
 						NetworkInterfaceReferenceProperties: &compute.NetworkInterfaceReferenceProperties{
 							Primary: to.BoolPtr(true),
+							DeleteOption: compute.DeleteOptionsDelete,
 						},
 					},
 				},
@@ -625,6 +649,7 @@ func (p *Provider) createVM(
 				DiskSizeGB: to.Int32Ptr(providerOpts.NetworkDiskSize),
 				Caching:    caching,
 				Lun:        to.Int32Ptr(42),
+				DeleteOption: compute.DiskDeleteOptionTypesDelete,
 			},
 		}
 
@@ -1141,6 +1166,7 @@ func (p *Provider) createIP(
 			PublicIPAddressPropertiesFormat: &network.PublicIPAddressPropertiesFormat{
 				PublicIPAddressVersion:   network.IPVersionIPv4,
 				PublicIPAllocationMethod: network.IPAllocationMethodStatic,
+				DeleteOption:             network.DeleteOptionsDelete,
 			},
 		})
 	if err != nil {
