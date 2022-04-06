@@ -156,7 +156,10 @@ $cchar   - build change (e.g., compatibility with older CPUs)\\
 $cchar   - enterprise change (e.g., change to backup/restore)\\
 $cchar   - backwards-incompatible change\\
 $cchar   - performance improvement\\
-$cchar   - bug fix
+$cchar   - bug fix\\
+$cchar\\
+$cchar See also https://cockroachlabs.atlassian.net/wiki/spaces/CRDB/pages/186548364/Release+notes\\
+$cchar\\
 ;
 "
 
